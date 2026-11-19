@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>小小打字王</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bpmf+Zihi+Kai+Std&display=swap" rel="stylesheet">
 <style>
   :root {
     --bg: #fff8ec; --card: #ffffff; --ink: #3b2f2a; --muted: #8a7b70;
@@ -28,7 +31,8 @@
   .back { padding: 10px 18px; font-size: 18px; background: var(--card); border: 3px solid var(--line); }
   .stats { font-size: 20px; color: var(--muted); }
   .text { background: var(--card); border: 3px solid var(--line); border-radius: 18px;
-    padding: 20px; font-size: 34px; line-height: 1.9; letter-spacing: 2px; }
+    padding: 20px; font-size: 40px; line-height: 2.1;
+    font-family: "Bpmf Zihi Kai Std", "DFKai-SB", "BiauKai", serif; } /* 字型自帶注音 */
   .text span.ok { color: var(--ok); }
   .text span.bad { color: #fff; background: var(--bad); border-radius: 6px; }
   .text span.cur { border-bottom: 4px solid var(--accent); }
@@ -41,6 +45,21 @@
   .stars { font-size: 56px; letter-spacing: 6px; }
   .result p { font-size: 24px; margin: 8px 0; }
   .big { padding: 14px 26px; font-size: 22px; background: var(--accent); color: #fff; margin: 12px 6px 0; }
+  .track { position: relative; height: 60px; margin-bottom: 14px; border-radius: 30px;
+    background: repeating-linear-gradient(90deg, #d8f0c8 0 40px, #c8e8b4 40px 80px); }
+  #runner { position: absolute; top: 6px; font-size: 40px; transition: left .3s;
+    left: calc(var(--p, 0) * (100% - 60px)); transform: scaleX(-1); }
+  .goal { position: absolute; right: 10px; top: 6px; font-size: 40px; }
+  .combo { font-size: 26px; font-weight: bold; color: var(--accent); min-height: 36px; text-align: center; }
+  .pop { animation: pop .3s; }
+  @keyframes pop { 50% { transform: scale(1.4); } }
+  .shake { animation: shake .3s; }
+  @keyframes shake { 25% { transform: translateX(-8px); } 75% { transform: translateX(8px); } }
+  .confetti { position: fixed; top: -50px; font-size: 30px; pointer-events: none;
+    animation: fall 2.4s linear forwards; }
+  @keyframes fall { to { transform: translateY(115vh) rotate(540deg); } }
+  .stars span { display: inline-block; animation: pop .5s backwards; }
+  @media (prefers-reduced-motion: reduce) { *, .confetti { animation: none !important; transition: none !important; } .confetti { display: none; } }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -56,9 +75,12 @@
   <section id="play" hidden>
     <div class="bar">
       <button class="back" id="back">← 選文章</button>
-      <div class="stats" id="live">時間 0 秒</div>
+      <div class="stats"><span id="live">時間 0 秒</span>
+        <button class="back" id="mute" aria-label="聲音開關">🔊</button></div>
     </div>
     <h2 id="title"></h2>
+    <div class="track"><span id="runner">🐰</span><span class="goal">🥕</span></div>
+    <div class="combo" id="combo" aria-live="polite"></div>
     <div class="text" id="text"></div>
     <textarea id="input" placeholder="在這裡打字…" autocomplete="off" spellcheck="false"></textarea>
     <p class="tip">小提示：逗號「，」按 Shift + &lt;，句號「。」按 Shift + &gt;</p>
@@ -109,6 +131,26 @@ console.assert(score("我家有狗", "我加有狗").ok === 3, "score: 錯字不
 
 const $ = id => document.getElementById(id);
 let level = "簡單", current = null, start = 0, timer = 0, composing = false;
+let prevLen = 0, combo = 0, best = 0, muted = false, audio;
+
+// 音效用 Web Audio 現場合成，不需要音檔
+function beep(freq, dur, type = "sine") {
+  if (muted) return;
+  audio ??= new AudioContext();
+  const o = audio.createOscillator(), g = audio.createGain(), t = audio.currentTime;
+  o.type = type; o.frequency.value = freq;
+  g.gain.setValueAtTime(0.15, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  o.connect(g).connect(audio.destination); o.start(); o.stop(t + dur);
+}
+function replay(el, cls) { el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); }
+function confetti(n) {
+  for (let i = 0; i < n; i++) {
+    const c = document.createElement("span");
+    c.className = "confetti"; c.textContent = [..."⭐🎉✨🌟🥕"][i % 5];
+    c.style.left = Math.random() * 100 + "vw"; c.style.animationDelay = Math.random() + "s";
+    document.body.append(c); setTimeout(() => c.remove(), 3500);
+  }
+}
 
 function showHome() {
   clearInterval(timer);
@@ -132,7 +174,8 @@ function showHome() {
 
 function startGame(title, text) {
   current = { title, text };
-  clearInterval(timer); start = 0;
+  clearInterval(timer); start = 0; prevLen = 0; combo = 0; best = 0;
+  $("combo").textContent = ""; $("runner").style.setProperty("--p", 0);
   $("home").hidden = true; $("play").hidden = false; $("result").hidden = true;
   $("title").textContent = title;
   $("text").innerHTML = [...text].map(c => `<span>${c}</span>`).join("");
@@ -151,6 +194,19 @@ function update() {
     start = Date.now();
     timer = setInterval(() => $("live").textContent = `時間 ${seconds()} 秒`, 500);
   }
+  let wrong = false;
+  for (let i = prevLen; i < typed.length && i < text.length; i++) {
+    if (typed[i] === text[i]) best = Math.max(best, ++combo);
+    else { combo = 0; wrong = true; }
+  }
+  if (typed.length > prevLen) {
+    if (wrong) { beep(150, .25, "square"); replay($("text"), "shake"); }
+    else beep(660 + Math.min(combo, 20) * 25, .12); // 連擊越多，聲音越高
+    $("combo").textContent = combo >= 3 ? `🔥 連擊 ${combo}${combo % 10 === 0 ? "　太神啦！" : ""}` : "";
+    replay($("combo"), "pop");
+  }
+  prevLen = typed.length;
+  $("runner").style.setProperty("--p", Math.min(1, typed.length / text.length));
   $("text").querySelectorAll("span").forEach((s, i) => {
     s.className = i < typed.length ? (typed[i] === text[i] ? "ok" : "bad") : i === typed.length ? "cur" : "";
   });
@@ -164,9 +220,11 @@ function finish(ok) {
   const speed = Math.round(ok / (sec / 60));
   const stars = acc >= 95 ? 3 : acc >= 80 ? 2 : 1;
   $("input").disabled = true;
-  $("stars").textContent = "⭐".repeat(stars) + "☆".repeat(3 - stars);
+  $("stars").innerHTML = [0, 1, 2].map(i => `<span style="animation-delay:${i * .3}s">${i < stars ? "⭐" : "☆"}</span>`).join("");
+  [523, 659, 784, 1047].slice(0, stars + 1).forEach((f, i) => setTimeout(() => beep(f, .3), i * 150));
+  confetti(stars * 15);
   $("msg").textContent = ["加油，再試一次！", "很不錯喔！", "太厲害了！"][stars - 1];
-  $("detail").textContent = `花了 ${sec} 秒 · 正確率 ${acc}% · 每分鐘 ${speed} 個字`;
+  $("detail").textContent = `花了 ${sec} 秒 · 正確率 ${acc}% · 每分鐘 ${speed} 個字 · 最高連擊 ${best}`;
   $("result").hidden = false;
 }
 
@@ -175,6 +233,7 @@ input.addEventListener("compositionstart", () => composing = true);
 input.addEventListener("compositionend", () => { composing = false; update(); });
 input.addEventListener("input", update);
 input.addEventListener("paste", e => e.preventDefault()); // 不能貼上，要自己打
+$("mute").onclick = () => { muted = !muted; $("mute").textContent = muted ? "🔇" : "🔊"; };
 $("back").onclick = $("other").onclick = showHome;
 $("again").onclick = () => startGame(current.title, current.text);
 showHome();
