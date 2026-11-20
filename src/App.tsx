@@ -5,7 +5,7 @@ import {
 } from "./store.ts";
 import { TypingPanel } from "./components/TypingPanel.tsx";
 import { Records, Settings } from "./components/Panels.tsx";
-import { ArtDefs, Guide as GuideArt, Arrow, Star, Lock, Stamp, Icon, ZoneScene } from "./components/Art.tsx";
+import { ArtDefs, Guide as GuideArt, Arrow, Star, Lock, Stamp, Icon, ZoneScene, Petals } from "./components/Art.tsx";
 import { LEVELS, ZONES, ZONE_SIZE, PRACTICE } from "./lib/learning.ts";
 import { configureAudio, sfx } from "./lib/audio.ts";
 
@@ -144,7 +144,7 @@ function Guide() {
 
   return (
     <>
-      <div className="guide-strip">
+      <div className={`guide-strip ${result ? "cheer" : ""}`}>
         <GuideArt className="guide-face" size={60} wink={st % 2 === 1} />
         <p className="speech">{say}</p>
         {act}
@@ -183,16 +183,48 @@ function Pointer({ target, dim }: { target: string; dim: boolean }) {
   );
 }
 
+/** 動畫是否要關掉：低效能模式或電腦設定「減少動態效果」 */
+const calm = (lowPerf: boolean) => lowPerf || window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/** 分數從 0 跑到目標值 */
+function useCountUp(target: number, still: boolean, delay = 1100, ms = 1100) {
+  const [v, setV] = useState(still ? target : 0);
+  useEffect(() => {
+    if (still) { setV(target); return; }
+    let raf = 0;
+    const start = performance.now() + delay;
+    const step = (t: number) => {
+      const p = Math.min(1, Math.max(0, (t - start) / ms));
+      setV(Math.round(target * (1 - Math.pow(1 - p, 3))));
+      if (p < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [target, still, delay, ms]);
+  return v;
+}
+
 function ResultModal() {
   const res = useGame(s => s.result);
   const st = useGame(s => s.tutorial);
+  const still = calm(useGame(s => s.settings.lowPerf));
+  const shown = useCountUp(res?.total ?? 0, still);
+  // 星星一顆一顆出現、印章蓋下去時各配一個音效
+  useEffect(() => {
+    if (!res) return;
+    const ts = [...Array(res.stars)].map((_, i) => setTimeout(() => sfx("coin"), 350 + i * 300));
+    ts.push(setTimeout(() => sfx("order"), 2300));
+    return () => ts.forEach(clearTimeout);
+  }, [res]);
   if (!res) return null;
   const p = LEVELS[res.level];
   const hasNext = res.level + 1 < LEVELS.length;
   const close = () => { useGame.setState({ result: null }); if (st === 6) setTutorial(-1); };
   return (
     <div className="modal" role="dialog" aria-label="過關結果">
-      <div className="modal-box result">
+      {!still && <Petals count={res.stars * 14} />}
+      <div className={`modal-box result ${still ? "still" : ""}`}>
+        <div className="clear-stamp"><Stamp size={110} text="過關" /></div>
         <h2>第 {res.level + 1} 關 過關！</h2>
         <Stars n={res.stars} size={56} />
         <table className="score">
@@ -200,7 +232,7 @@ function ResultModal() {
             <tr><td>打完 {p.lines.reduce((n, l) => n + l.chars.length, 0)} 個字</td><td>+{res.base}</td></tr>
             <tr><td>第一次就打對的字</td><td>+{res.clean}</td></tr>
             <tr><td>速度獎勵（每分鐘 {res.cpm} 字）</td><td>+{res.speed}</td></tr>
-            <tr className="total"><td>總分</td><td>{res.total} 分</td></tr>
+            <tr className="total"><td>總分</td><td>{shown} 分</td></tr>
           </tbody>
         </table>
         {res.best && <p className="newbest">新紀錄！</p>}

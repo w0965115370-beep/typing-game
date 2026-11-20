@@ -1,5 +1,5 @@
 // 和風手繪插圖（原創 SVG）。墨線＋水彩色塊，再套上 #rough 濾鏡讓線條有手繪的抖動感。
-import type { CSSProperties } from "react";
+import { useMemo, type CSSProperties } from "react";
 
 const INK = "#3b3a36";
 type P = { size?: number; className?: string; style?: CSSProperties };
@@ -74,7 +74,7 @@ export function Stamp({ size = 44, text = "過" }: P & { text?: string }) {
     <svg viewBox="0 0 48 48" width={size} height={size} className="stamp" aria-label="已過關">
       <g opacity=".9">
         <circle cx="24" cy="24" r="20" fill="rgba(255,255,255,.6)" stroke="#c8402f" strokeWidth="3.5" filter="url(#rough)" />
-        <text x="24" y="32" textAnchor="middle" fontSize="24" fontWeight="bold" fill="#c8402f" fontFamily="'LXGW WenKai TC', serif">{text}</text>
+        <text x="24" y={text.length > 1 ? 29 : 32} textAnchor="middle" fontSize={text.length > 1 ? 15 : 24} fontWeight="bold" fill="#c8402f" fontFamily="'LXGW WenKai TC', serif">{text}</text>
       </g>
     </svg>
   );
@@ -131,5 +131,23 @@ export function ZoneScene({ zone }: { zone: number }) {
         {[[80, 35], [220, 22], [520, 60]].map(([x, y]) => <path key={x} d={`M${x} ${y}q10-14 26-4q14-12 28 2q14 0 12 12H${x - 6}q-10-2-6-10z`} fill="#fff" opacity=".85" />)}
       </g>}
     </svg>
+  );
+}
+
+/** 過關時飄落的櫻花瓣 */
+export function Petals({ count }: { count: number }) {
+  const petals = useMemo(() => Array.from({ length: count }, (_, i) => ({
+    left: Math.random() * 100, delay: Math.random() * 1.8, dur: 3.2 + Math.random() * 2.5,
+    size: 14 + Math.random() * 14, rot: Math.random() * 360, color: ["#f6c1c7", "#f3a9b3", "#fbd9dc"][i % 3],
+  })), [count]);
+  return (
+    <div className="petals" aria-hidden>
+      {petals.map((p, i) => (
+        <svg key={i} className="petal" viewBox="0 0 20 20" width={p.size} height={p.size}
+          style={{ left: `${p.left}%`, animationDelay: `${p.delay}s`, animationDuration: `${p.dur}s`, rotate: `${p.rot}deg` }}>
+          <path d="M10 2c4 3 7 8 3 15c-1-1-2-2-3-2s-2 1-3 2C3 10 6 5 10 2z" fill={p.color} stroke="#d98a96" strokeWidth=".8" />
+        </svg>
+      ))}
+    </div>
   );
 }
