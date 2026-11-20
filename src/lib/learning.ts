@@ -13,9 +13,10 @@ export const PRACTICE = data.practice as { id: string; text: string; chars: Char
 export const POEM = Object.fromEntries(POEMS.map(p => [p.id, p])) as Record<string, Poem>;
 export const CATEGORIES = ["春天", "夏天", "秋天", "冬天", "花草樹木", "山水風景", "可愛動物", "農田生活", "生活童詩", "思念與友情"];
 
-// ---- 適性學習 ----
-export type Learner = { level: 1 | 2 | 3; punctStage: 1 | 2; clean: number; struggle: number; punctOk: number };
-export const newLearner = (): Learner => ({ level: 1, punctStage: 1, clean: 0, struggle: 0, punctOk: 0 });
+// ---- 關卡：一首詩一關，先短後長、先只有逗號句號 ----
+export const LEVELS = [...POEMS].sort((a, b) => a.punctStage - b.punctStage || a.hanzi - b.hanzi || a.maxLine - b.maxLine);
+export const ZONE_SIZE = 15;
+export const ZONES = ["草原村", "魔法森林", "天空城堡"];
 
 export type TaskResult = {
   hanzi: number; punct: number; ms: number;
@@ -26,42 +27,18 @@ export type TaskResult = {
   hints: Record<string, number>; ime: Record<string, number>; mistakes: Record<string, number>;
 };
 
-/** 依最近表現調整：連續 3 首不用提示且首次正確率 ≥90% 才升級；連續 2 次需要按鍵提示就降一級。農場等級不影響。 */
-export function adapt(l0: Learner, r: TaskResult): Learner {
-  const l = { ...l0 };
-  if (r.maxHint === 0 && r.firstTry / r.positions >= 0.9) {
-    l.clean++; l.struggle = 0;
-    if (l.clean >= 3 && l.level < 3) { l.level = (l.level + 1) as Learner["level"]; l.clean = 0; }
-  } else if (r.maxHint >= 2) {
-    l.struggle++; l.clean = 0;
-    if (l.struggle >= 2 && l.level > 1) { l.level = (l.level - 1) as Learner["level"]; l.struggle = 0; }
-  } else { l.clean = 0; }
-  // 逗號、句號熟練（累積 20 個且這次沒有標點錯誤）後，才加入頓號、問號、驚嘆號
-  if (r.punctErrors === 0) l.punctOk += r.punct;
-  if (l.punctStage === 1 && l.punctOk >= 20) l.punctStage = 2;
-  return l;
+/** 分數：每個字 10 分＋第一次就打對的字每個再 5 分＋速度獎勵（每分鐘每個字 5 分，最多 100）。用提示不扣分。 */
+export function scoreOf(r: TaskResult) {
+  const base = r.positions * 10;
+  const clean = r.firstTry * 5;
+  const speedCpm = cpm(r.hanzi, r.ms);
+  const speed = Math.min(100, speedCpm * 5);
+  const rate = r.positions ? r.firstTry / r.positions : 0;
+  const stars = rate >= 0.95 ? 3 : rate >= 0.8 ? 2 : 1;
+  return { base, clean, speed, total: base + clean + speed, stars, cpm: speedCpm, rate };
 }
 
-// ---- 選詩與詩歌收藏 ----
-export type Collection = Record<string, { count: number; first: string; last: string }>;
-
-/** 程度 1：20 字以內（五言絕句、短童詩）；程度 2：28 字以內（七言絕句）；程度 3：全部（含六句長詩）。 */
-const MAX_HANZI = { 1: 20, 2: 28, 3: 99 };
-export function pickPoem(l: Learner, col: Collection, rng = Math.random, avoid?: string): string {
-  const fits = (max: number) => POEMS.filter(p => p.punctStage <= l.punctStage && p.hanzi <= max && p.id !== avoid);
-  const ok = fits(MAX_HANZI[l.level]).length ? fits(MAX_HANZI[l.level]) : fits(99);
-  const fresh = ok.filter(p => !col[p.id]);
-  const pool = fresh.length ? fresh : ok;
-  const least = Math.min(...pool.map(p => col[p.id]?.count ?? 0));
-  const best = pool.filter(p => (col[p.id]?.count ?? 0) === least);
-  return best[Math.floor(rng() * best.length)].id;
-}
-
-/** 打完整首詩：收進圖鑑（再打一次會累加次數）。 */
-export function collect(col: Collection, id: string, today: string): Collection {
-  const prev = col[id];
-  return { ...col, [id]: { count: (prev?.count ?? 0) + 1, first: prev?.first ?? today, last: today } };
-}
+export type Best = Record<string, { score: number; stars: number; plays: number }>;
 
 // ---- 學習紀錄 ----
 export type Stats = {

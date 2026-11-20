@@ -1,20 +1,22 @@
 import { useEffect, useRef, useState } from "react";
-import { useGame, completeTask, cancelTask, setTutorial, startPractice, startDay, askRescue, type Screen } from "./store.ts";
-import { Farm } from "./components/Farm.tsx";
+import {
+  useGame, completeTask, cancelTask, setTutorial, startPractice, startLevel,
+  unlocked, totalScore, totalStars, nextLevel, type Screen,
+} from "./store.ts";
 import { TypingPanel } from "./components/TypingPanel.tsx";
-import { SeedPicker, Book, Records, Settings } from "./components/Panels.tsx";
-import { ZhuyinLine } from "./components/Zhuyin.tsx";
+import { Records, Settings } from "./components/Panels.tsx";
 import * as S from "./lib/sprites.ts";
-import * as F from "./lib/farm.ts";
-import { CROP, ACTIVE_CROPS, xpToReach, MAX_LEVEL, type CropId } from "./config/economy.ts";
-import { POEM, PRACTICE } from "./lib/learning.ts";
+import { LEVELS, ZONES, ZONE_SIZE, PRACTICE } from "./lib/learning.ts";
 import { configureAudio, sfx } from "./lib/audio.ts";
 
-const TITLES: Record<Exclude<Screen, null>, string> = { seeds: "要種什麼？", book: "詩歌圖鑑", records: "我的紀錄", settings: "設定" };
-const TOOLBAR: [Exclude<Screen, null>, string, () => string][] = [
-  ["book", "詩歌圖鑑", S.icons.book], ["records", "我的紀錄", S.icons.chart], ["settings", "設定", S.icons.gear],
-];
+const TITLES: Record<Exclude<Screen, null>, string> = { records: "我的紀錄", settings: "設定" };
+const TINT = ["rgba(0,0,0,0)", "rgba(30,80,40,.35)", "rgba(170,200,255,.5)"].map(c => `linear-gradient(${c}, ${c})`);
 const IME_TEST = ["我", "花", "，"].map(t => PRACTICE.find(p => p.text === t)!);
+const Stars = ({ n, size = 20 }: { n: number; size?: number }) => (
+  <span className="stars" aria-label={`${n} 顆星`}>
+    {[0, 1, 2].map(i => <img key={i} className="px" src={i < n ? S.icons.star() : S.icons.starOff()} alt="" width={size} height={size} style={{ animationDelay: `${i * 0.3}s` }} />)}
+  </span>
+);
 
 export default function App() {
   const screen = useGame(s => s.screen);
@@ -29,114 +31,114 @@ export default function App() {
     return () => window.removeEventListener("pointerdown", first);
   }, []);
 
-  const close = () => useGame.setState({ screen: null, pickPlot: null });
-
   return (
     <div className={`app ${settings.lowPerf ? "lowperf" : ""}`}>
       <TopBar />
       <Guide />
-      <main className="center"><Farm /></main>
-      <nav className="toolbar" aria-label="工具列">
-        {TOOLBAR.map(([id, label, icon]) => (
-          <button key={id} onClick={() => { sfx("click"); useGame.setState({ screen: id }); }} disabled={!!task}>
-            <img className="px" src={icon()} alt="" /><span>{label}</span>
-          </button>
-        ))}
-      </nav>
-
+      <main className="center">
+        {task ? <div className="play-page"><TypingPanel key={task.id} task={task} onDone={completeTask} onCancel={cancelTask} /></div> : <LevelMap />}
+      </main>
+      {!task && (
+        <nav className="toolbar" aria-label="工具列">
+          <button onClick={() => useGame.setState({ screen: "records" })}><img className="px" src={S.icons.chart()} alt="" /><span>我的紀錄</span></button>
+          <button onClick={() => useGame.setState({ screen: "settings" })}><img className="px" src={S.icons.gear()} alt="" /><span>設定</span></button>
+        </nav>
+      )}
       {screen && !task && (
         <div className="sheet" role="dialog" aria-label={TITLES[screen]}>
-          <div className="sheet-head"><h2>{TITLES[screen]}</h2><button className="ghost" onClick={close}>關閉 ✕</button></div>
-          <div className="sheet-body">
-            {screen === "seeds" && <SeedPicker />}
-            {screen === "book" && <Book />}
-            {screen === "records" && <Records />}
-            {screen === "settings" && <Settings />}
-          </div>
+          <div className="sheet-head"><h2>{TITLES[screen]}</h2><button className="ghost" onClick={() => useGame.setState({ screen: null })}>關閉 ✕</button></div>
+          <div className="sheet-body">{screen === "records" ? <Records /> : <Settings />}</div>
         </div>
       )}
-
-      {task && <div className="typing-dock"><TypingPanel key={task.id} task={task} onDone={completeTask} onCancel={cancelTask} /></div>}
+      <ResultModal />
       <Toast />
-      <DayResultModal />
     </div>
   );
 }
 
 function TopBar() {
-  const xp = useGame(s => s.farm.xp);
-  const coins = useGame(s => s.farm.coins);
-  const day = useGame(s => s.farm.day);
+  const best = useGame(s => s.best);
   const save = useGame(s => s.saveStatus);
-  const lv = F.levelOf(xp);
-  const from = xpToReach(lv), to = xpToReach(Math.min(MAX_LEVEL, lv + 1));
   return (
     <header className="topbar">
-      <h1><img className="px" src={S.produce("radish")} alt="" />打字開心農場</h1>
-      <span className="chip">第 {day} 天</span>
-      <span className="chip lv">Lv.{lv}<span className="xpbar"><span style={{ width: `${lv >= MAX_LEVEL ? 100 : ((xp - from) / (to - from)) * 100}%` }} /></span></span>
-      <span className="coin big"><img className="px" src={S.icons.coin()} alt="金幣" />{coins}</span>
+      <h1><img className="px" src={S.icons.keyboard()} alt="" />小小打字王</h1>
+      <span className="chip">總分 <b>{totalScore(best)}</b></span>
+      <span className="chip"><img className="px" src={S.icons.star()} alt="星星" width={22} height={22} />{totalStars(best)} / {LEVELS.length * 3}</span>
       <span className={`save ${save}`}>{save === "error" ? "⚠ 無法存檔" : save === "saving" ? "存檔中…" : "✔ 已存檔"}</span>
     </header>
+  );
+}
+
+function LevelMap() {
+  const best = useGame(s => s.best);
+  const next = nextLevel(best);
+  return (
+    <div className="map">
+      {ZONES.map((zone, z) => (
+        <section key={zone} className="zone" style={{ backgroundImage: `${TINT[z]}, url(${S.ground(16, 4)})` }}>
+          <h2><img className="px" src={S.tree()} alt="" width={40} height={40} />{zone}<small>第 {z * ZONE_SIZE + 1}～{Math.min(LEVELS.length, (z + 1) * ZONE_SIZE)} 關</small></h2>
+          <div className="path">
+            {LEVELS.slice(z * ZONE_SIZE, (z + 1) * ZONE_SIZE).map((p, k) => {
+              const i = z * ZONE_SIZE + k;
+              const open = unlocked(best, i);
+              const b = best[p.id];
+              return (
+                <button key={p.id} className={`node ${i === next ? "next" : ""} ${b ? "done" : ""}`} disabled={!open}
+                  data-point={`level-${i}`} onClick={() => startLevel(i)}
+                  aria-label={open ? `第 ${i + 1} 關《${p.title}》${b ? `，最高 ${b.score} 分` : ""}` : `第 ${i + 1} 關，還沒開放`}>
+                  {open ? <b className="num">{i + 1}</b> : <img className="px" src={S.icons.lock()} alt="" width={32} height={32} />}
+                  <span className="ntitle">{open ? p.title : "？？？"}</span>
+                  {b ? <><Stars n={b.stars} size={16} /><span className="nscore">{b.score} 分</span></> : <span className="nlen">{p.hanzi} 字</span>}
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      ))}
+    </div>
   );
 }
 
 /** 嚮導：一句話＋一個按鈕＋箭頭指著下一步。新手教學時其他地方變暗、點不到。 */
 function Guide() {
   const st = useGame(s => s.tutorial);
-  const farm = useGame(s => s.farm);
   const task = useGame(s => s.task);
+  const best = useGame(s => s.best);
+  const result = useGame(s => s.result);
   const screen = useGame(s => s.screen);
-  const busyModal = useGame(s => !!s.dayResult || !!s.levelUp);
   const tasks = useGame(s => s.stats.tasks);
   const startTasks = useRef(tasks);
 
-  // 教學依實際完成的動作前進
   useEffect(() => {
     if (st >= 2 && st <= 4 && !task && tasks > startTasks.current) { startTasks.current = tasks; setTutorial(st + 1); }
-    if (st === 5 && farm.totals.planted > 0 && !screen) setTutorial(6);
-    if (st === 6 && farm.day > 1) setTutorial(7);
-  }, [st, farm, task, tasks, screen]);
+    if (st === 5 && result) setTutorial(6);
+  }, [st, task, tasks, result]);
 
-  const empty = farm.plots.find(p => !p.crop);
-  const canBuy = F.unlockedCrops(farm).some(c => (farm.seeds[c.id] ?? 0) > 0 || farm.coins >= c.seedPrice);
-  const anyCrop = farm.plots.some(p => p.crop);
-
+  const next = nextLevel(best);
   let say = "", point: string | null = null, dim = false, act: React.ReactNode = null;
-  const startBtn = <button className="primary big-btn" data-point="start" onClick={startDay} disabled={!!task}>開始打字</button>;
+  const nextBtn = (label: string, onClick: () => void) => <button className="primary big-btn" data-point="next" onClick={onClick}>{label}</button>;
 
   if (task) {
-    say = task.kind === "day" ? "照著打完整首詩，就完成今天的農事！" : "照著打打看！";
+    say = task.level === undefined ? "照著打打看！" : "照著打完整首詩，就過關了！";
     if (st >= 0) point = "typing-input";
+  } else if (result) {
+    say = st === 6 ? "過關了！按「下一關」繼續挑戰！" : "過關了！";
+    if (st === 6) { point = "next-level"; dim = true; }
   } else if (st === 0) {
-    say = "嗨！我是阿禾，我們一起來種菜吧！";
-    act = <button className="primary big-btn" data-point="next" onClick={() => setTutorial(1)}>好！</button>; point = "next";
+    say = "嗨！我是阿禾，一起來打字闖關吧！"; act = nextBtn("好！", () => setTutorial(1)); point = "next";
   } else if (st === 1) {
-    say = "先看看螢幕右下角，要顯示「中」喔！";
-    act = <button className="primary big-btn" data-point="next" onClick={() => setTutorial(2)}>看好了</button>; point = "next";
+    say = "先看看螢幕右下角，要顯示「中」喔！"; act = nextBtn("看好了", () => setTutorial(2)); point = "next";
   } else if (st >= 2 && st <= 4) {
     const item = IME_TEST[st - 2];
     say = `先練習一下：打出「${item.text}」`;
-    act = <button className="primary big-btn" data-point="next" onClick={() => startPractice(item, `練習：打出「${item.text}」`)}>開始</button>; point = "next"; dim = true;
+    act = nextBtn("開始", () => startPractice(item, `練習：打出「${item.text}」`)); point = "next"; dim = true;
   } else if (st === 5) {
-    if (screen === "seeds") { say = "點「白蘿蔔」把它種下去！"; point = "seed-radish"; }
-    else { say = "點一塊空的田！"; point = `plot-${empty?.id ?? 0}`; }
-    dim = true;
-  } else if (st === 6) {
-    say = "按「開始打字」，打完一首詩，菜就會長大！"; act = startBtn; point = "start"; dim = true;
-  } else if (st === 7 && !busyModal) {
-    say = "你學會了！種菜、打詩，收集更多詩吧！";
-    act = <button className="primary big-btn" data-point="next" onClick={() => setTutorial(-1)}>好！</button>; point = "next";
-  } else if (F.needsRescue(farm)) {
-    say = "沒有金幣和種子了嗎？阿禾送你！";
-    act = <button className="primary big-btn" data-point="next" onClick={askRescue}>領種子</button>; point = "next";
-  } else if (!anyCrop && empty && canBuy) {
-    say = "點空的田，種一些菜吧！"; point = screen === "seeds" ? null : `plot-${empty.id}`; act = startBtn;
+    say = "點第 1 關，開始挑戰！"; point = "level-0"; dim = true;
+  } else if (next < 0) {
+    say = "全部過關了，好厲害！可以再玩一次，挑戰更高分。";
   } else {
-    say = empty && canBuy ? "可以再多種幾棵，或按「開始打字」！" : "按「開始打字」，完成今天的農事！";
-    act = startBtn; point = screen ? null : "start";
+    say = "點發亮的關卡，繼續挑戰！"; point = screen ? null : `level-${next}`;
   }
-  if (busyModal) { point = null; dim = false; }
 
   return (
     <>
@@ -154,9 +156,10 @@ function Guide() {
 function Pointer({ target, dim }: { target: string; dim: boolean }) {
   const [r, setR] = useState<DOMRect | null>(null);
   useEffect(() => {
+    const el = document.querySelector(`[data-point="${target}"]`);
+    if (el && target.startsWith("level-")) el.scrollIntoView({ block: "center", behavior: "smooth" });
     const find = () => {
-      const el = document.querySelector(`[data-point="${target}"]`);
-      const box = el?.getBoundingClientRect();
+      const box = document.querySelector(`[data-point="${target}"]`)?.getBoundingClientRect();
       setR(box && box.width ? box : null);
     };
     find();
@@ -178,54 +181,42 @@ function Pointer({ target, dim }: { target: string; dim: boolean }) {
   );
 }
 
+function ResultModal() {
+  const res = useGame(s => s.result);
+  const st = useGame(s => s.tutorial);
+  if (!res) return null;
+  const p = LEVELS[res.level];
+  const hasNext = res.level + 1 < LEVELS.length;
+  const close = () => { useGame.setState({ result: null }); if (st === 6) setTutorial(-1); };
+  return (
+    <div className="modal" role="dialog" aria-label="過關結果">
+      <div className="modal-box result">
+        <h2>第 {res.level + 1} 關 過關！</h2>
+        <Stars n={res.stars} size={56} />
+        <table className="score">
+          <tbody>
+            <tr><td>打完 {p.lines.reduce((n, l) => n + l.chars.length, 0)} 個字</td><td>+{res.base}</td></tr>
+            <tr><td>第一次就打對的字</td><td>+{res.clean}</td></tr>
+            <tr><td>速度獎勵（每分鐘 {res.cpm} 字）</td><td>+{res.speed}</td></tr>
+            <tr className="total"><td>總分</td><td>{res.total} 分</td></tr>
+          </tbody>
+        </table>
+        {res.best && <p className="newbest">新紀錄！</p>}
+        {res.stars < 3 && <p className="sub">第一次就打對越多，星星越多喔！</p>}
+        <p className="explain"><b>《{p.title}》</b>{p.explain}</p>
+        <div className="row">
+          {hasNext && <button className="primary big-btn" data-point="next-level" onClick={() => { close(); startLevel(res.level + 1); }}>下一關 →</button>}
+          <button className="big-btn" onClick={() => { close(); startLevel(res.level); }}>再玩一次</button>
+          <button className="big-btn" onClick={() => { close(); sfx("click"); }}>回地圖</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Toast() {
   const t = useGame(s => s.toast);
   const [show, setShow] = useState(false);
   useEffect(() => { if (!t) return; setShow(true); const h = setTimeout(() => setShow(false), 2600); return () => clearTimeout(h); }, [t]);
   return show && t ? <div className="toast" role="status">{t.text}</div> : null;
-}
-
-function DayResultModal() {
-  const res = useGame(s => s.dayResult);
-  const lv = useGame(s => s.levelUp);
-  const task = useGame(s => s.task);
-  if (task) return null;
-  if (res) {
-    const p = POEM[res.poemId];
-    const got = Object.entries(res.harvested) as [CropId, number][];
-    return (
-      <div className="modal" role="dialog" aria-label="今天的收穫">
-        <div className="modal-box">
-          <h2>第 {res.farm.day - 1} 天完成！</h2>
-          {got.length > 0 ? (
-            <div className="harvest">
-              {got.map(([id, n]) => <span key={id} className="unlock"><img className="px icon64" src={S.produce(id)} alt="" />{CROP[id].name} ×{n}</span>)}
-              <p className="earned"><img className="px" src={S.icons.coin()} alt="" />+{res.earned} 金幣</p>
-            </div>
-          ) : <p>{res.growing.length ? "菜長大了一點！" : "田裡還沒有種菜，下次先種菜喔！"}</p>}
-          {res.growing.length > 0 && <p className="sub">{res.growing.map(g => `${CROP[g.id].name}還要 ${g.left} 天`).join("、")}</p>}
-          <div className="collected">
-            <p>{res.firstTime ? "收集到新的詩！" : "又打完一次："}《{p.title}》</p>
-            <div className="poem-lines small">{p.lines.map((l, i) => <div key={i} className="pline"><ZhuyinLine chars={l.chars} /></div>)}</div>
-            <p className="explain">{p.explain}</p>
-          </div>
-          <button className="primary big-btn" onClick={() => useGame.setState({ dayResult: null })}>好！</button>
-        </div>
-      </div>
-    );
-  }
-  if (lv) {
-    const unlocked = ACTIVE_CROPS.filter(c => c.unlock === lv);
-    return (
-      <div className="modal" role="dialog" aria-label="升級">
-        <div className="modal-box levelup">
-          <h2>升到 Lv.{lv} 了！</h2>
-          {unlocked.length > 0 ? <p>可以種新的菜：{unlocked.map(c => <span key={c.id} className="unlock"><img className="px icon64" src={S.produce(c.id)} alt="" />{c.name}</span>)}</p>
-            : <p>你的農場越來越棒了！</p>}
-          <button className="primary big-btn" onClick={() => useGame.setState({ levelUp: null })}>太好了</button>
-        </div>
-      </div>
-    );
-  }
-  return null;
 }

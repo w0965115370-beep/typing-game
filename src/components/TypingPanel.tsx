@@ -12,7 +12,7 @@ import { analyze, Cooldown, IME_TEXT, type ImeAdvice } from "../lib/ime.ts";
 import { zhuyinToKeys, pinyinToZhuyin, type KeyStep } from "../lib/zhuyin.ts";
 import { HINTS } from "../config/hints.ts";
 import { PUNCT_HELP, SYMBOL_MENU_HELP } from "../config/punctuation.ts";
-import { POEM, type TaskResult } from "../lib/learning.ts";
+import { LEVELS, type TaskResult } from "../lib/learning.ts";
 import { sfx } from "../lib/audio.ts";
 import { icons } from "../lib/sprites.ts";
 
@@ -150,7 +150,7 @@ export function TypingPanel({ task, onDone, onCancel }: Props) {
   }
 
   const states = chars.map((_, i) => i < pos ? "ok" : i === pos ? (ev.mistake ? "cur bad" : "cur") : "");
-  const poem = task.poemId ? POEM[task.poemId] : null;
+  const poem = task.level !== undefined ? LEVELS[task.level] : null;
   const help = cur && curIsPunct ? PUNCT_HELP[cur.c] : null;
 
   // 一次只顯示一則訊息：完成 > 輸入法提醒 > 打錯 > 停太久
@@ -172,13 +172,13 @@ export function TypingPanel({ task, onDone, onCancel }: Props) {
   return (
     <section className="typing" aria-label="打字工作區" style={{ ["--zh" as string]: `${34 * fontScale}px` }}>
       <header className="typing-head">
-        <img className="px" src={taskIcon(task)} alt="" width={40} height={40} />
+        <img className="px" src={icons.keyboard()} alt="" width={40} height={40} />
         <h2>{task.title}</h2>
-        {poem && <span className="poem-meta">《{poem.title}》{poem.author}</span>}
+        {poem && <span className="poem-meta">{poem.dynasty}・{poem.author}</span>}
         <button className="ghost close" onClick={onCancel} aria-label="先不做了">✕</button>
       </header>
 
-      <p className="instruct">照著打這句詩，標點也要打喔：</p>
+      <p className="instruct">照著打完整首詩，標點也要打喔：</p>
       <div className="poem-lines" aria-label="要輸入的內容">
         {task.lines.map((l, li) => {
           const offset = task.lines.slice(0, li).reduce((n, x) => n + x.chars.length, 0);
@@ -241,4 +241,3 @@ export function TypingPanel({ task, onDone, onCancel }: Props) {
   );
 }
 
-const taskIcon = (t: Task) => t.kind === "day" ? icons.can() : icons.keyboard();

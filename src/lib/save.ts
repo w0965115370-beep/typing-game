@@ -2,7 +2,7 @@
 // 第二階段換成雲端存檔時只需替換這個檔案。
 // shortcut: 用 localStorage，電腦教室若有還原卡會被清除；正式上課前要換成雲端存檔（Phase 2）。
 const KEY = "typing-farm-save";
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 
 export function loadSave<T>(): T | null {
   try {

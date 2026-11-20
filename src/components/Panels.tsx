@@ -1,82 +1,8 @@
-// 種子選單、詩歌圖鑑、學習紀錄、設定。全部用滑鼠操作，字少、按鈕大。
+// 我的紀錄、設定。字少、按鈕大，給老師看的細節收在 details 裡。
 import { useState } from "react";
-import { useGame, chooseSeed, startPractice, updateSettings, askRescue } from "../store.ts";
-import { ACTIVE_CROPS } from "../config/economy.ts";
-import { levelOf, needsRescue } from "../lib/farm.ts";
-import { POEMS, CATEGORIES, cpm, type Poem } from "../lib/learning.ts";
-import { ZhuyinLine } from "./Zhuyin.tsx";
-import * as S from "../lib/sprites.ts";
+import { useGame, updateSettings } from "../store.ts";
+import { cpm } from "../lib/learning.ts";
 import { clearSave } from "../lib/save.ts";
-
-const Coin = ({ n }: { n: number }) => <span className="coin"><img className="px" src={S.icons.coin()} alt="金幣" />{n}</span>;
-
-/** 點空田後跳出：一張卡就是一種作物，點了就種（沒有種子會自動花金幣買一包）。 */
-export function SeedPicker() {
-  const farm = useGame(s => s.farm);
-  const lv = levelOf(farm.xp);
-  return (
-    <div>
-      {needsRescue(farm) && <p className="center-text"><button className="primary" onClick={askRescue}>金幣不夠了，請阿禾送種子</button></p>}
-      <div className="grid seeds">
-        {ACTIVE_CROPS.map(c => {
-          const have = farm.seeds[c.id] ?? 0;
-          const locked = c.unlock > lv;
-          const poor = have === 0 && farm.coins < c.seedPrice;
-          return (
-            <button key={c.id} className={`card seed ${locked ? "locked" : ""}`} data-point={`seed-${c.id}`}
-              disabled={locked || poor} onClick={() => chooseSeed(c.id)}>
-              <img className="px icon64" src={S.produce(c.id)} alt="" />
-              <b>{c.name}</b>
-              {locked ? <span>Lv.{c.unlock} 才能種</span>
-                : have > 0 ? <span className="have">有 {have} 包</span>
-                : <span>買一包 <Coin n={c.seedPrice} /></span>}
-              {!locked && <span className="sub">賣 {c.sellPrice} 金幣</span>}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-export function Book() {
-  const col = useGame(s => s.collection);
-  const [open, setOpen] = useState<Poem | null>(null);
-  const [cat, setCat] = useState(CATEGORIES[0]);
-  if (open) {
-    const c = col[open.id];
-    return (
-      <div className="poem-card">
-        <button className="ghost" onClick={() => setOpen(null)}>← 回去</button>
-        <div className="poem-card-head">
-          <img className="px cat-art" src={S.category(open.category)} alt="" />
-          <div><h3>《{open.title}》</h3><p>{open.dynasty}・{open.author}</p></div>
-        </div>
-        <div className="poem-lines small">{open.lines.map((l, i) => <div key={i} className="pline"><ZhuyinLine chars={l.chars} /></div>)}</div>
-        <p className="explain">{open.explain}</p>
-        <p className="sub">完成 {c.count} 次</p>
-        <button className="primary" onClick={() => startPractice({ text: open.lines.map(l => l.text).join(""), chars: open.lines.flatMap(l => l.chars) }, `再打一次《${open.title}》`)}>再打一次</button>
-      </div>
-    );
-  }
-  return (
-    <div>
-      <p>收集了 <b>{Object.keys(col).length}</b> / {POEMS.length} 首詩</p>
-      <div className="tabs">
-        {CATEGORIES.map(c => <button key={c} aria-pressed={c === cat} onClick={() => setCat(c)}>{c}</button>)}
-      </div>
-      <div className="grid">
-        {POEMS.filter(p => p.category === cat).map(p => col[p.id] ? (
-          <button key={p.id} className="card poem" onClick={() => setOpen(p)}>
-            <img className="px cat-art" src={S.category(p.category)} alt="" /><b>《{p.title}》</b>
-          </button>
-        ) : (
-          <div key={p.id} className="card poem locked"><img className="px cat-art" src={S.category(p.category)} alt="" /><b>？？？</b></div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 export function Records() {
   const s = useGame(s => s.stats);
@@ -129,8 +55,8 @@ export function Settings() {
             <option value="cangjie">倉頡</option><option value="other">其他</option>
           </select>
         </label>
-        {!confirm ? <button className="danger" onClick={() => setConfirm(true)}>重新開始農場…</button> : (
-          <p>確定要刪除這台電腦上的農場和紀錄嗎？刪除後無法復原。
+        {!confirm ? <button className="danger" onClick={() => setConfirm(true)}>全部重新開始…</button> : (
+          <p>確定要刪除這台電腦上的關卡分數和紀錄嗎？刪除後無法復原。
             <button className="danger" onClick={() => { clearSave(); location.reload(); }}>確定刪除</button>
             <button onClick={() => setConfirm(false)}>取消</button></p>
         )}

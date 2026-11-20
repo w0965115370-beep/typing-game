@@ -1,52 +1,41 @@
-// 全域狀態。打字元件不訂閱農場狀態，農場更新不會讓輸入框重新渲染。
+// 全域狀態：關卡地圖、目前的打字任務、成績與設定。打字元件只在開始時讀取任務。
 import { create } from "zustand";
-import * as F from "./lib/farm.ts";
 import * as L from "./lib/learning.ts";
-import { CROP, type CropId } from "./config/economy.ts";
 import { loadSave, writeSave } from "./lib/save.ts";
 import { sfx } from "./lib/audio.ts";
 
-export type Task = { id: number; kind: "day" | "practice"; title: string; lines: L.Line[]; poemId?: string };
-export type Screen = null | "seeds" | "book" | "records" | "settings";
+export type Task = { id: number; title: string; lines: L.Line[]; level?: number };
+export type Screen = null | "records" | "settings";
 export type Settings = {
   sfx: number; music: number; muted: boolean; fontScale: number; lowPerf: boolean;
   ime: "ms-bopomofo" | "other-bopomofo" | "cangjie" | "other";
 };
-export type DayResult = F.DayReport & { poemId: string; firstTime: boolean };
+export type LevelResult = ReturnType<typeof L.scoreOf> & { level: number; best: boolean };
 
-type Persist = {
-  farm: F.Farm; learner: L.Learner; poemId: string; collection: L.Collection;
-  stats: L.Stats; settings: Settings; tutorial: number;
-};
+type Persist = { best: L.Best; stats: L.Stats; settings: Settings; tutorial: number };
 type State = Persist & {
-  screen: Screen; pickPlot: number | null; task: Task | null;
+  screen: Screen; task: Task | null; result: LevelResult | null;
   toast: { text: string; id: number } | null; saveStatus: "saved" | "saving" | "error";
-  levelUp: number | null; dayResult: DayResult | null;
 };
 
 const fresh = (): Persist => ({
-  farm: F.newFarm(), learner: L.newLearner(), poemId: "chunxiao", collection: {}, stats: L.newStats(),
+  best: {}, stats: L.newStats(), tutorial: 0,
   settings: { sfx: 0.4, music: 0.15, muted: false, fontScale: 1, lowPerf: false, ime: "ms-bopomofo" },
-  tutorial: 0,
 });
 
 export const useGame = create<State>(() => ({
   ...fresh(), ...(loadSave<Persist>() ?? {}),
-  screen: null, pickPlot: null, task: null, toast: null, saveStatus: "saved", levelUp: null, dayResult: null,
+  screen: null, task: null, result: null, toast: null, saveStatus: "saved",
 }));
 const set = useGame.setState, get = useGame.getState;
 
-// ---- 存檔：每個操作後 0.5 秒內寫入 ----
 let timer = 0;
-export function saveSoon(delay = 500) {
+export function saveSoon(delay = 300) {
   set({ saveStatus: "saving" });
   clearTimeout(timer);
   timer = window.setTimeout(() => {
     const s = get();
-    const ok = writeSave({
-      farm: s.farm, learner: s.learner, poemId: s.poemId, collection: s.collection,
-      stats: s.stats, settings: s.settings, tutorial: s.tutorial,
-    } satisfies Persist);
+    const ok = writeSave({ best: s.best, stats: s.stats, settings: s.settings, tutorial: s.tutorial } satisfies Persist);
     set({ saveStatus: ok ? "saved" : "error" });
   }, delay);
 }
@@ -54,68 +43,41 @@ export function saveSoon(delay = 500) {
 let toastId = 0;
 export const toast = (text: string) => set({ toast: { text, id: ++toastId } });
 
-function applyFarm(r: F.Result) {
-  if (!r.ok) { toast(r.error); sfx("soft"); return false; }
-  set({ farm: r.farm });
-  if (r.levelUp) set({ levelUp: r.levelUp });
-  saveSoon();
-  return true;
-}
-
-/** 點田：空田 → 跳出種子選單；有作物 → 告訴小朋友還要幾天。 */
-export function clickPlot(plotId: number) {
-  const s = get();
-  if (s.task) return;
-  const c = s.farm.plots.find(p => p.id === plotId)?.crop;
-  if (!c) { sfx("click"); set({ screen: "seeds", pickPlot: plotId }); return; }
-  toast(`${CROP[c.id].name}還要 ${F.daysLeft(c)} 天，打完一首詩就會長大！`);
-}
-
-/** 種子選單：有種子就直接種；沒有就先花金幣買一包再種。 */
-export function chooseSeed(id: CropId) {
-  const s = get();
-  const plotId = s.pickPlot;
-  if (plotId === null) return;
-  if (!(s.farm.seeds[id]! > 0) && !applyFarm(F.buySeed(s.farm, id, 1))) return;
-  if (!applyFarm(F.plant(get().farm, plotId, id))) return;
-  sfx("plant");
-  set({ screen: null, pickPlot: null });
-}
+/** 第 i 關是否已開放：第 1 關一開始就能玩，之後要過了前一關。 */
+export const unlocked = (best: L.Best, i: number) => i === 0 || !!best[L.LEVELS[i - 1].id];
+export const totalScore = (best: L.Best) => Object.values(best).reduce((n, b) => n + b.score, 0);
+export const totalStars = (best: L.Best) => Object.values(best).reduce((n, b) => n + b.stars, 0);
+/** 下一個要挑戰的關卡：第一個還沒過的關卡 */
+export const nextLevel = (best: L.Best) => L.LEVELS.findIndex(p => !best[p.id]);
 
 let taskSeq = 0;
-export function startDay() {
-  const s = get();
-  if (s.task) return;
-  const poem = L.POEM[s.poemId];
-  set({ screen: null, task: { id: ++taskSeq, kind: "day", title: `第 ${s.farm.day} 天的農事`, lines: poem.lines, poemId: poem.id } });
+export function startLevel(i: number) {
+  if (!unlocked(get().best, i) || !L.LEVELS[i]) return;
+  sfx("click");
+  const p = L.LEVELS[i];
+  set({ screen: null, result: null, task: { id: ++taskSeq, title: `第 ${i + 1} 關：${p.title}`, lines: p.lines, level: i } });
 }
 export function startPractice(line: L.Line, title = "練習") {
-  set({ screen: null, task: { id: ++taskSeq, kind: "practice", title, lines: [line] } });
+  set({ screen: null, task: { id: ++taskSeq, title, lines: [line] } });
 }
 export const cancelTask = () => set({ task: null });
 
-/** 打完：記錄學習；如果是一天的農事，作物長大、自動採收、收藏這首詩、換下一首。 */
+/** 打完：記錄學習；如果是關卡，算分、更新最高分、解鎖下一關。 */
 export function completeTask(r: L.TaskResult) {
   const s = get();
   const t = s.task;
   if (!t) return;
-  const day = L.today();
-  const learner = L.adapt(s.learner, r);
-  set({ task: null, stats: L.record(s.stats, r, day), learner });
-  if (t.kind === "day") {
-    const rep = F.endDay(s.farm);
-    const firstTime = !s.collection[t.poemId!];
-    const collection = L.collect(s.collection, t.poemId!, day);
-    set({
-      farm: rep.farm, collection, poemId: L.pickPoem(learner, collection, Math.random, t.poemId),
-      dayResult: { ...rep, poemId: t.poemId!, firstTime },
-      levelUp: rep.levelUp ?? null,
-    });
-    sfx(rep.earned ? "harvest" : "water");
-  }
+  const stats = L.record(s.stats, r, L.today());
+  if (t.level === undefined) { set({ task: null, stats }); saveSoon(); return; }
+  const sc = L.scoreOf(r);
+  const id = L.LEVELS[t.level].id;
+  const prev = s.best[id];
+  const isBest = !prev || sc.total > prev.score;
+  const best = { ...s.best, [id]: { score: Math.max(prev?.score ?? 0, sc.total), stars: Math.max(prev?.stars ?? 0, sc.stars), plays: (prev?.plays ?? 0) + 1 } };
+  set({ task: null, stats, best, result: { ...sc, level: t.level, best: isBest } });
+  sfx("levelup");
   saveSoon();
 }
 
-export function askRescue() { if (applyFarm(F.rescue(get().farm))) toast("阿禾送你 3 包白蘿蔔種子！"); }
 export function updateSettings(p: Partial<Settings>) { set({ settings: { ...get().settings, ...p } }); saveSoon(); }
 export function setTutorial(step: number) { set({ tutorial: step }); saveSoon(); }
