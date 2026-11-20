@@ -14,7 +14,7 @@ import { HINTS } from "../config/hints.ts";
 import { PUNCT_HELP, SYMBOL_MENU_HELP } from "../config/punctuation.ts";
 import { LEVELS, type TaskResult } from "../lib/learning.ts";
 import { sfx } from "../lib/audio.ts";
-import { icons } from "../lib/sprites.ts";
+import { Icon } from "./Art.tsx";
 
 type Props = { task: Task; onDone: (r: TaskResult) => void; onCancel: () => void };
 
@@ -172,7 +172,7 @@ export function TypingPanel({ task, onDone, onCancel }: Props) {
   return (
     <section className="typing" aria-label="打字工作區" style={{ ["--zh" as string]: `${34 * fontScale}px` }}>
       <header className="typing-head">
-        <img className="px" src={icons.keyboard()} alt="" width={40} height={40} />
+        <Icon name="brush" size={40} />
         <h2>{task.title}</h2>
         {poem && <span className="poem-meta">{poem.dynasty}・{poem.author}</span>}
         <button className="ghost close" onClick={onCancel} aria-label="先不做了">✕</button>
@@ -211,7 +211,7 @@ export function TypingPanel({ task, onDone, onCancel }: Props) {
         {message}
         {!finished && level < 3 && (
           <button className="sos" onClick={() => setManual(m => Math.min(3, Math.max(m, level) + 1))}>
-            <img className="px" src={icons.help()} alt="" />我不會打
+            <Icon name="help" size={32} />我不會打
           </button>
         )}
       </div>
