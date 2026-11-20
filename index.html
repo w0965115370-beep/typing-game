@@ -18,15 +18,7 @@
   main { max-width: 900px; margin: 0 auto; padding: 24px 16px 48px; }
   h1 { font-size: 40px; margin: 8px 0 4px; text-align: center; }
   .sub { text-align: center; color: var(--muted); margin: 0 0 24px; font-size: 18px; }
-  .tabs { display: flex; gap: 10px; justify-content: center; margin-bottom: 20px; flex-wrap: wrap; }
   button { font: inherit; cursor: pointer; border: 0; border-radius: 14px; }
-  .tab { padding: 12px 22px; font-size: 20px; background: var(--card); border: 3px solid var(--line); }
-  .tab[aria-pressed="true"] { border-color: var(--accent); background: #ffe9d6; }
-  .list { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
-  .card { text-align: left; padding: 18px; font-size: 22px; background: var(--card);
-    border: 3px solid var(--line); }
-  .card:hover, .card:focus-visible { border-color: var(--accent); }
-  .card small { display: block; color: var(--muted); font-size: 16px; margin-top: 6px; }
   .bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
   .back { padding: 10px 18px; font-size: 18px; background: var(--card); border: 3px solid var(--line); }
   .stats { font-size: 20px; color: var(--muted); }
@@ -60,6 +52,33 @@
   @keyframes fall { to { transform: translateY(115vh) rotate(540deg); } }
   .stars span { display: inline-block; animation: pop .5s backwards; }
   @media (prefers-reduced-motion: reduce) { *, .confetti { animation: none !important; transition: none !important; } .confetti { display: none; } }
+  .hud { display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+  .chip { background: var(--card); border: 3px solid var(--line); border-radius: 999px;
+    padding: 8px 18px; font-size: 22px; }
+  button.chip { border-color: var(--accent); }
+  .zone { background: var(--card); border: 3px solid var(--line); border-radius: 24px;
+    padding: 16px 16px 36px; margin-bottom: 18px; }
+  .zone h2 { margin: 0 0 14px; font-size: 26px; }
+  .path { display: flex; justify-content: space-around; gap: 8px; flex-wrap: wrap; }
+  .node { width: 120px; padding: 12px 6px; font-size: 20px; background: #ffe9d6;
+    border: 4px solid var(--accent); border-radius: 22px; line-height: 1.3; }
+  .node:nth-child(even) { transform: translateY(24px); }
+  .node b { display: block; font-size: 30px; }
+  .node small { display: block; font-size: 18px; letter-spacing: 1px; }
+  .node:disabled { background: #eee; border-color: #ccc; color: #999; cursor: not-allowed; }
+  .node.next { animation: bounce 1s infinite; }
+  .node.next:nth-child(even) { animation-name: bounce2; }
+  @keyframes bounce { 50% { transform: translateY(-8px); } }
+  @keyframes bounce2 { 0%, 100% { transform: translateY(24px); } 50% { transform: translateY(16px); } }
+  .shop { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }
+  .pet { background: var(--card); border: 3px solid var(--line); border-radius: 20px;
+    text-align: center; padding: 14px; }
+  .pet .face { font-size: 60px; }
+  .pet p { margin: 4px 0 8px; font-size: 20px; }
+  .pet button { padding: 8px 16px; font-size: 18px; background: var(--accent); color: #fff; }
+  .pet button:disabled { background: #ccc; cursor: default; }
+  .pet.using { border-color: var(--ok); }
+  .gain { font-size: 28px !important; font-weight: bold; color: #c47a00; }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -67,14 +86,27 @@
 <main>
   <section id="home">
     <h1>⌨️ 小小打字王</h1>
-    <p class="sub">選一篇文章，用注音輸入法照著打打看！</p>
-    <div class="tabs" id="tabs"></div>
-    <div class="list" id="list"></div>
+    <p class="sub">用注音輸入法闖關！拿到 2 顆星就能解鎖下一關</p>
+    <div class="hud">
+      <span class="chip" id="coins"></span><span class="chip" id="total"></span>
+      <button class="chip" id="toShop">🛒 寵物商店</button>
+    </div>
+    <div id="map"></div>
+  </section>
+
+  <section id="shopPage" hidden>
+    <div class="bar">
+      <button class="back" id="shopBack">← 回地圖</button>
+      <span class="chip" id="coins2"></span>
+    </div>
+    <h2>🛒 寵物商店</h2>
+    <p class="sub" style="text-align:left">打對一個字得 1 枚金幣，每拿到一顆新星星再送 20 枚。選好的寵物會陪你一起跑！</p>
+    <div class="shop" id="shop"></div>
   </section>
 
   <section id="play" hidden>
     <div class="bar">
-      <button class="back" id="back">← 選文章</button>
+      <button class="back" id="back">← 回地圖</button>
       <div class="stats"><span id="live">時間 0 秒</span>
         <button class="back" id="mute" aria-label="聲音開關">🔊</button></div>
     </div>
@@ -88,8 +120,10 @@
       <div class="stars" id="stars"></div>
       <p id="msg"></p>
       <p id="detail"></p>
+      <p class="gain" id="gain"></p>
+      <button class="big" id="next">下一關 →</button>
       <button class="big" id="again">再打一次</button>
-      <button class="big" id="other">換一篇</button>
+      <button class="big" id="other">回地圖</button>
     </div>
   </section>
 </main>
@@ -129,8 +163,20 @@ function score(target, typed) {
 console.assert(score("我家有狗", "我 家有").ok === 3, "score: 忽略空白");
 console.assert(score("我家有狗", "我加有狗").ok === 3, "score: 錯字不算");
 
+const ZONES = { "簡單": "🌱 草原村", "中等": "🌲 魔法森林", "挑戰": "🏰 天空城堡" };
+const STAGES = Object.entries(LEVELS).flatMap(([lv, list]) => list.map(([title, text]) => ({ lv, title, text })));
+const PETS = [["🐰", "小兔子", 0], ["🐱", "小貓咪", 50], ["🐶", "小狗狗", 80], ["🐢", "小烏龜", 120],
+  ["🐼", "熊貓", 180], ["🦊", "狐狸", 250], ["🐯", "老虎", 330], ["🦄", "獨角獸", 420], ["🐉", "神龍", 550]];
+
+// 進度只存在這台電腦的瀏覽器裡
+let save = { stars: {}, coins: 0, owned: ["🐰"], pet: "🐰" };
+try { Object.assign(save, JSON.parse(localStorage.getItem("typing-save")) || {}); } catch {}
+function store() { try { localStorage.setItem("typing-save", JSON.stringify(save)); } catch {} }
+const starsOf = i => save.stars[i] || 0;
+const unlocked = i => i === 0 || starsOf(i - 1) >= 2;
+
 const $ = id => document.getElementById(id);
-let level = "簡單", current = null, start = 0, timer = 0, composing = false;
+let current = null, start = 0, timer = 0, composing = false;
 let prevLen = 0, combo = 0, best = 0, muted = false, audio;
 
 // 音效用 Web Audio 現場合成，不需要音檔
@@ -152,32 +198,62 @@ function confetti(n) {
   }
 }
 
-function showHome() {
+function show(id) {
   clearInterval(timer);
-  $("play").hidden = true; $("home").hidden = false;
-  $("tabs").innerHTML = ""; $("list").innerHTML = "";
-  for (const name of Object.keys(LEVELS)) {
-    const b = document.createElement("button");
-    b.className = "tab"; b.textContent = name;
-    b.setAttribute("aria-pressed", name === level);
-    b.onclick = () => { level = name; showHome(); };
-    $("tabs").append(b);
-  }
-  for (const [title, text] of LEVELS[level]) {
-    const b = document.createElement("button");
-    b.className = "card";
-    b.innerHTML = `${title}<small>${text.length} 個字</small>`;
-    b.onclick = () => startGame(title, text);
-    $("list").append(b);
+  for (const p of ["home", "play", "shopPage"]) $(p).hidden = p !== id;
+  $("coins").textContent = $("coins2").textContent = `🪙 ${save.coins}`;
+}
+
+function showHome() {
+  show("home");
+  const got = STAGES.reduce((n, _, i) => n + starsOf(i), 0);
+  $("total").textContent = `⭐ ${got} / ${STAGES.length * 3}`;
+  $("map").innerHTML = "";
+  const next = STAGES.findIndex((_, i) => unlocked(i) && starsOf(i) < 2);
+  for (const lv of Object.keys(LEVELS)) {
+    const zone = document.createElement("div");
+    zone.className = "zone";
+    zone.innerHTML = `<h2>${ZONES[lv]}</h2><div class="path"></div>`;
+    STAGES.forEach((st, i) => {
+      if (st.lv !== lv) return;
+      const b = document.createElement("button"), n = starsOf(i);
+      b.className = "node" + (i === next ? " next" : "");
+      b.disabled = !unlocked(i);
+      b.innerHTML = `<b>${b.disabled ? "🔒" : i === next ? save.pet : i + 1}</b>${st.title}<small>${"⭐".repeat(n)}${"☆".repeat(3 - n)}</small>`;
+      b.onclick = () => startGame(i);
+      zone.lastChild.append(b);
+    });
+    $("map").append(zone);
   }
 }
 
-function startGame(title, text) {
-  current = { title, text };
+function showShop() {
+  show("shopPage");
+  $("shop").innerHTML = "";
+  for (const [face, name, price] of PETS) {
+    const own = save.owned.includes(face), using = save.pet === face;
+    const d = document.createElement("div");
+    d.className = "pet" + (using ? " using" : "");
+    d.innerHTML = `<div class="face">${face}</div><p>${name}</p>`;
+    const b = document.createElement("button");
+    b.textContent = using ? "使用中" : own ? "換牠跑" : `🪙 ${price} 購買`;
+    b.disabled = using || (!own && save.coins < price);
+    b.onclick = () => {
+      if (!own) { save.coins -= price; save.owned.push(face); confetti(20); beep(880, .3); }
+      save.pet = face; store(); showShop();
+    };
+    d.append(b); $("shop").append(d);
+  }
+}
+
+function startGame(i) {
+  const { title, text } = STAGES[i];
+  current = { i, title, text };
   clearInterval(timer); start = 0; prevLen = 0; combo = 0; best = 0;
   $("combo").textContent = ""; $("runner").style.setProperty("--p", 0);
-  $("home").hidden = true; $("play").hidden = false; $("result").hidden = true;
-  $("title").textContent = title;
+  show("play"); $("result").hidden = true;
+  $("runner").textContent = save.pet;
+  $("title").textContent = `第 ${i + 1} 關：${title}`;
   $("text").innerHTML = [...text].map(c => `<span>${c}</span>`).join("");
   $("input").value = ""; $("input").disabled = false; $("input").focus();
   $("live").textContent = "時間 0 秒";
@@ -225,7 +301,15 @@ function finish(ok) {
   confetti(stars * 15);
   $("msg").textContent = ["加油，再試一次！", "很不錯喔！", "太厲害了！"][stars - 1];
   $("detail").textContent = `花了 ${sec} 秒 · 正確率 ${acc}% · 每分鐘 ${speed} 個字 · 最高連擊 ${best}`;
+  const i = current.i, before = starsOf(i), wasLocked = !unlocked(i + 1);
+  const gain = ok + Math.max(0, stars - before) * 20;
+  save.coins += gain; save.stars[i] = Math.max(before, stars); store();
+  const opened = wasLocked && unlocked(i + 1) && i + 1 < STAGES.length;
+  $("gain").textContent = `🪙 +${gain} 金幣` + (opened ? "　🔓 解鎖下一關！" : "");
+  $("next").hidden = !(i + 1 < STAGES.length && unlocked(i + 1));
+  if (stars < 2) $("msg").textContent += " 拿到 2 顆星就能解鎖下一關！";
   $("result").hidden = false;
+  $("result").scrollIntoView({ behavior: "smooth" });
 }
 
 const input = $("input");
@@ -235,7 +319,10 @@ input.addEventListener("input", update);
 input.addEventListener("paste", e => e.preventDefault()); // 不能貼上，要自己打
 $("mute").onclick = () => { muted = !muted; $("mute").textContent = muted ? "🔇" : "🔊"; };
 $("back").onclick = $("other").onclick = showHome;
-$("again").onclick = () => startGame(current.title, current.text);
+$("again").onclick = () => startGame(current.i);
+$("next").onclick = () => startGame(current.i + 1);
+$("toShop").onclick = showShop;
+$("shopBack").onclick = showHome;
 showHome();
 </script>
 </body>
