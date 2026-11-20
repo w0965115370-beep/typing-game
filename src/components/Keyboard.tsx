@@ -89,11 +89,11 @@ export function GuidedPractice({ steps, target, onClose }: { steps: KeyStep[]; t
     if (!id || e.key === "Tab" || e.key === "Escape") return;
     e.preventDefault();
     const want = steps[i].key;
-    // 標點的組合鍵（例如 Shift + ,）：只看最後一個鍵，並確認 Shift 有按住
-    const needShift = steps.some(s => s.key === "Shift");
-    if (id === "Shift" && needShift) { setMsg("很好，按住 Shift 不要放，再按下一個鍵。"); if (want === "Shift") setI(i + 1); return; }
+    // 標點的組合鍵（例如 Ctrl + ,）：修飾鍵要一直按住，最後一個鍵按下時檢查它們都還按著
+    const mods: string[] = steps.map(s => s.key).filter(k => k === "Ctrl" || k === "Shift");
+    if (mods.includes(id)) { setMsg(`很好，按住 ${id} 不要放，再按下一個鍵。`); if (want === id) setI(i + 1); return; }
     setFlash(id); setTimeout(() => setFlash(null), 250);
-    if (id === want && (!needShift || e.shiftKey)) {
+    if (id === want && mods.every(m => m === "Ctrl" ? e.ctrlKey : e.shiftKey)) {
       sfx("ok");
       setI(i + 1);
       setMsg(i + 1 >= steps.length ? `完成了！現在回到輸入框，自己打出「${target}」。` : "答對了！再按下一個亮起來的按鍵。");

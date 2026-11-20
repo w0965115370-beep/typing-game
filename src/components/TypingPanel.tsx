@@ -99,7 +99,7 @@ export function TypingPanel({ task, onDone, onCancel }: Props) {
 
   const steps: KeyStep[] = useMemo(() => {
     if (!cur) return [];
-    if (curIsPunct) return (PUNCT_HELP[cur.c]?.keys ?? []).map(k => ({ key: k, label: k === "Shift" ? "按住" : cur.c }));
+    if (curIsPunct) return (PUNCT_HELP[cur.c]?.keys ?? []).map(k => ({ key: k, label: k === "Shift" || k === "Ctrl" ? "按住" : cur.c }));
     try { return zhuyinToKeys(cur.zy); } catch { return []; }
   }, [cur, curIsPunct]);
 

@@ -8,12 +8,12 @@ export type PunctHelp = {
 };
 
 export const PUNCT_HELP: Record<string, PunctHelp> = {
-  "，": { name: "逗號", stage: 1, half: ",", keys: ["Shift", ","], how: "在中文模式，按住 Shift 再按 , 鍵（逗號鍵）", verified: false },
-  "。": { name: "句號", stage: 1, half: ".", keys: ["Shift", "."], how: "在中文模式，按住 Shift 再按 . 鍵（句點鍵）", verified: false },
+  "，": { name: "逗號", stage: 1, half: ",", keys: ["Ctrl", ","], how: "在中文模式，按住 Ctrl 再按 , 鍵（逗號鍵）", verified: true },
+  "。": { name: "句號", stage: 1, half: ".", keys: ["Ctrl", "."], how: "在中文模式，按住 Ctrl 再按 . 鍵（句點鍵）", verified: false },
   "、": { name: "頓號", stage: 2, keys: [], how: "可以用輸入法的符號表選取「、」", verified: false },
-  "？": { name: "問號", stage: 2, half: "?", keys: ["Shift", "/"], how: "在中文模式，按住 Shift 再按 / 鍵", verified: false },
-  "！": { name: "驚嘆號", stage: 2, half: "!", keys: ["Shift", "1"], how: "在中文模式，按住 Shift 再按 1 鍵", verified: false },
-  "：": { name: "冒號", stage: 3, half: ":", keys: ["Shift", ";"], how: "在中文模式，按住 Shift 再按 ; 鍵", verified: false },
+  "？": { name: "問號", stage: 2, half: "?", keys: ["Ctrl", "Shift", "/"], how: "在中文模式，按住 Ctrl 和 Shift 再按 / 鍵", verified: false },
+  "！": { name: "驚嘆號", stage: 2, half: "!", keys: ["Ctrl", "Shift", "1"], how: "在中文模式，按住 Ctrl 和 Shift 再按 1 鍵", verified: false },
+  "：": { name: "冒號", stage: 3, half: ":", keys: ["Ctrl", "Shift", ";"], how: "在中文模式，按住 Ctrl 和 Shift 再按 ; 鍵", verified: false },
   "；": { name: "分號", stage: 3, half: ";", keys: [], how: "可以用輸入法的符號表選取「；」", verified: false },
   "「": { name: "上引號", stage: 3, keys: [], how: "可以用輸入法的符號表選取「「」", verified: false },
   "」": { name: "下引號", stage: 3, keys: [], how: "可以用輸入法的符號表選取「」」", verified: false },
