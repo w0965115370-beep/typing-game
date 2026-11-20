@@ -220,6 +220,16 @@ export const icons = {
   help: () => draw("help", 16, 16, p => { p(3, 1, 10, 14, P.gold); p(1, 3, 14, 10, P.gold); p(6, 3, 4, 2, P.out); p(10, 4, 2, 3, P.out); p(7, 7, 3, 2, P.out); p(7, 9, 2, 1, P.out); p(7, 11, 2, 2, P.out); }),
 };
 
+/** 指引箭頭：大大的黃色向下箭頭 */
+export function arrow() {
+  return draw("arrow", 16, 16, p => {
+    p(5, 0, 6, 9, P.out); p(1, 8, 14, 2, P.out); p(2, 10, 12, 1, P.out); p(3, 11, 10, 1, P.out);
+    p(4, 12, 8, 1, P.out); p(5, 13, 6, 1, P.out); p(6, 14, 4, 1, P.out); p(7, 15, 2, 1, P.out);
+    p(6, 1, 4, 8, P.gold); p(3, 9, 10, 1, P.gold); p(4, 10, 8, 1, P.gold); p(5, 11, 6, 1, P.gold);
+    p(6, 12, 4, 1, P.gold); p(7, 13, 2, 1, P.gold); p(6, 1, 1, 7, P.white);
+  });
+}
+
 /** 農場嚮導「阿禾」：戴草帽的小農夫 */
 export function guide(frame = 0) {
   return draw(`guide${frame}`, 16, 16, p => {

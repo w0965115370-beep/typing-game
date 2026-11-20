@@ -7,10 +7,10 @@ import { HINTS } from "../config/hints.ts";
 export type ImeAdvice = "englishMode" | "halfwidth" | "noCandidate" | "homophone";
 
 export const IME_TEXT: Record<ImeAdvice, string> = {
-  englishMode: "你好像正在使用英文輸入模式，請看看右下角的輸入法是不是已經切換成中文喔！",
-  halfwidth: "這好像是英文的半形符號，我們需要中文的全形標點喔！",
-  noCandidate: "請確認你已切換成中文注音模式，打完注音後，再從候選字中選擇正確的國字。",
-  homophone: "這兩個字的讀音一樣，但寫法不同。打完注音後，看看候選字清單，選擇跟題目一樣的字。",
+  englishMode: "好像是英文模式喔！看看螢幕右下角，要是「中」。",
+  halfwidth: "這是英文的符號，要打中文的標點喔！",
+  noCandidate: "打完注音後，要選出國字喔！",
+  homophone: "讀音一樣，但是字不一樣！選字時看清楚。",
 };
 
 /**

@@ -4,7 +4,7 @@ import { KEY_ROWS, KEY_OF_SYMBOL, keyIdFromCode } from "../config/keyboard.ts";
 import { evaluate, ErrorCounter } from "./typing.ts";
 import { analyze, Cooldown } from "./ime.ts";
 import * as F from "./farm.ts";
-import { POEMS, PRACTICE, adapt, newLearner, advance, pickPoem, type TaskResult, type Learner } from "./learning.ts";
+import { POEMS, PRACTICE, POEM, adapt, newLearner, collect, pickPoem, type TaskResult, type Learner } from "./learning.ts";
 import { PUNCT_HELP } from "../config/punctuation.ts";
 
 const T = (s: string) => Array.from(s);
@@ -104,68 +104,49 @@ describe("輸入法行為分析", () => {
 });
 
 describe("農場經濟", () => {
-  const rng = F.mulberry(7);
+  const ok = (r: F.Result) => { if (!r.ok) throw new Error(r.error); return r.farm; };
   it("初始狀態", () => {
-    const f = F.newFarm(1);
-    expect(f.coins).toBe(300); expect(f.seeds).toEqual({ radish: 5, cabbage: 3 }); expect(f.plots).toHaveLength(6);
-    expect(f.orders).toHaveLength(3);
+    const f = F.newFarm();
+    expect(f.coins).toBe(300); expect(f.seeds).toEqual({ radish: 5, cabbage: 3 }); expect(f.plots).toHaveLength(6); expect(f.day).toBe(1);
   });
-  it("完整循環：播種→澆水→成長→口渴→澆水→成熟→採收→販售", () => {
-    let f = F.newFarm(1);
-    let r = F.plant(f, 0, "radish"); expect(r.ok).toBe(true); f = (r as any).farm;
-    expect(f.seeds.radish).toBe(4);
-    expect(F.stageOf(f.plots[0].crop!)).toBe(1);
-    f = F.tick(f, 10000); expect(f.plots[0].crop!.grownMs).toBe(0); // 沒澆水不會長
-    r = F.water(f, 0); f = (r as any).farm;
-    f = F.tick(f, 20000); expect(f.plots[0].crop!.grownMs).toBe(15000); // 長到一半停下來
-    expect(F.needsWater(f.plots[0].crop!)).toBe(true);
-    r = F.water(f, 0); f = (r as any).farm;
-    expect(F.canHarvest(f, 0)).toBe("還沒成熟");
-    f = F.tick(f, 20000); expect(F.isRipe(f.plots[0].crop!)).toBe(true);
-    expect(F.stageOf(f.plots[0].crop!)).toBe(5);
-    r = F.harvest(f, 0); f = (r as any).farm;
-    expect(f.inventory.radish).toBe(1); expect(f.plots[0].crop).toBe(null);
-    r = F.sell(f, "radish", 1); f = (r as any).farm;
-    expect(f.coins).toBe(318);
+  it("打完一首詩＝過一天：白蘿蔔一天就收成換金幣，高麗菜要兩天", () => {
+    let f = ok(F.plant(F.newFarm(), 0, "radish"));
+    f = ok(F.plant(f, 1, "cabbage"));
+    expect(f.seeds).toEqual({ radish: 4, cabbage: 2 });
+    let d = F.endDay(f);
+    expect(d.harvested).toEqual({ radish: 1 }); expect(d.earned).toBe(18);
+    expect(d.farm.coins).toBe(318); expect(d.farm.plots[0].crop).toBe(null);
+    expect(d.growing).toEqual([{ id: "cabbage", left: 1 }]); expect(d.farm.day).toBe(2);
+    d = F.endDay(d.farm);
+    expect(d.harvested).toEqual({ cabbage: 1 }); expect(d.farm.coins).toBe(353);
   });
-  it("五個成長階段", () => {
-    const c = { id: "radish" as const, grownMs: 0, waters: 1 };
-    expect([0, 1000, 9000, 16000, 30000].map(g => F.stageOf({ ...c, grownMs: g }))).toEqual([1, 2, 3, 4, 5]);
+  it("沒種菜也可以過一天，只是沒有收成", () => {
+    const d = F.endDay(F.newFarm());
+    expect(d.earned).toBe(0); expect(d.farm.coins).toBe(300); expect(d.farm.xp).toBeGreaterThan(0);
+  });
+  it("成長外觀依天數變化", () => {
+    expect([0, 1, 2].map(days => F.stageOf({ id: "tomato", days }))).toEqual([1, 2, 4]);
+    expect(F.stageOf({ id: "cabbage", days: 1 })).toBe(3);
+    expect(F.stageOf({ id: "radish", days: 1 })).toBe(5);
+  });
+  it("同一塊田不能種兩次、沒種子不能種", () => {
+    const f = ok(F.plant(F.newFarm(), 0, "radish"));
+    expect(F.plant(f, 0, "radish").ok).toBe(false);
+    expect(F.plant(f, 1, "carrot").ok).toBe(false);
   });
   it("金幣不夠不能買、不會變負數", () => {
-    const f = { ...F.newFarm(1), coins: 5 };
+    const f = { ...F.newFarm(), coins: 5 };
     expect(F.buySeed(f, "radish", 1).ok).toBe(false);
     expect(F.buySeed(f, "radish", -3).ok).toBe(false);
-    expect(F.buySeed(F.newFarm(1), "radish", 30).ok).toBe(true);
-    expect(F.buySeed(F.newFarm(1), "radish", 31).ok).toBe(false);
+    expect(F.buySeed(F.newFarm(), "radish", 30).ok).toBe(true);
+    expect(F.buySeed(F.newFarm(), "radish", 31).ok).toBe(false);
   });
-  it("未解鎖的作物不能買", () => expect(F.buySeed(F.newFarm(1), "carrot", 1).ok).toBe(false));
-  it("庫存不夠不能賣、不會負數", () => {
-    expect(F.sell(F.newFarm(1), "radish", 1).ok).toBe(false);
-  });
-  it("訂單不能重複領取", () => {
-    let f = F.newFarm(1);
-    const o = f.orders[0];
-    f = { ...f, inventory: { radish: 99, cabbage: 99 } };
-    const r1 = F.fulfill(f, o.id, rng); expect(r1.ok).toBe(true);
-    const f2 = (r1 as any).farm as F.Farm;
-    expect(f2.coins).toBe(300 + o.reward);
-    expect(F.fulfill(f2, o.id, rng).ok).toBe(false);
-    expect(f2.orders).toHaveLength(3);
-  });
-  it("訂單獎勵高於直接販售", () => {
-    const f = F.newFarm(3);
-    for (const o of f.orders) {
-      const sellValue = Object.entries(o.items).reduce((s, [id, n]) => s + ({ radish: 18, cabbage: 35 } as any)[id] * n!, 0);
-      expect(o.reward).toBeGreaterThan(sellValue);
-    }
-  });
+  it("未解鎖的作物不能買", () => expect(F.buySeed(F.newFarm(), "carrot", 1).ok).toBe(false));
   it("沒錢沒種子時可以領免費種子，其他時候不行", () => {
-    const f = F.newFarm(1);
+    const f = F.newFarm();
     expect(F.rescue(f).ok).toBe(false);
-    const broke = { ...f, coins: 0, seeds: {} };
-    const r = F.rescue(broke); expect(r.ok).toBe(true);
-    expect(F.rescue((r as any).farm).ok).toBe(false);
+    const r = F.rescue({ ...f, coins: 0, seeds: {} }); expect(r.ok).toBe(true);
+    expect(F.rescue(ok(r)).ok).toBe(false);
   });
   it("升級", () => { expect(F.levelOf(0)).toBe(1); expect(F.levelOf(30)).toBe(2); expect(F.levelOf(79)).toBe(2); expect(F.levelOf(80)).toBe(3); });
 });
@@ -209,9 +190,9 @@ describe("題庫", () => {
 
 describe("適性學習與詩歌收藏", () => {
   const r = (o: Partial<TaskResult>): TaskResult => ({ hanzi: 5, punct: 1, ms: 1000, maxHint: 0, firstTry: 6, positions: 6, punctErrors: 0, halfwidth: 0, hints: {}, ime: {}, mistakes: {}, ...o });
-  it("連續 4 次不用提示才升一級", () => {
+  it("連續 3 首不用提示才升一級", () => {
     let l = newLearner();
-    for (let i = 0; i < 3; i++) l = adapt(l, r({}));
+    for (let i = 0; i < 2; i++) l = adapt(l, r({}));
     expect(l.level).toBe(1);
     l = adapt(l, r({})); expect(l.level).toBe(2);
   });
@@ -226,13 +207,16 @@ describe("適性學習與詩歌收藏", () => {
     for (let i = 0; i < 20; i++) l = adapt(l, r({}));
     expect(l.punctStage).toBe(2);
   });
-  it("打完整首詩就收藏", () => {
+  it("打完整首詩就收藏，再打一次累加次數", () => {
+    let col = collect({}, "chunxiao", "2026-11-20");
+    col = collect(col, "chunxiao", "2026-11-21");
+    expect(col.chunxiao).toEqual({ count: 2, first: "2026-11-20", last: "2026-11-21" });
+  });
+  it("程度 1 只出 20 字以內的詩，並優先出還沒收藏的", () => {
     const l = newLearner();
-    let p = { poemId: "chunxiao", line: 0 }, col = {};
-    for (let i = 0; i < 3; i++) { const a = advance(p, 1, col, l, "2026-11-20"); p = a.progress; col = a.collection; expect(a.finished).toBe(null); }
-    const a = advance(p, 1, col, l, "2026-11-20");
-    expect(a.finished?.id).toBe("chunxiao");
-    expect(a.collection).toHaveProperty("chunxiao");
-    expect(a.progress.poemId).not.toBe("chunxiao");
+    for (let i = 0; i < 20; i++) {
+      const id = pickPoem(l, { chunxiao: { count: 1, first: "", last: "" } });
+      expect(POEM[id].hanzi).toBeLessThanOrEqual(20); expect(id).not.toBe("chunxiao");
+    }
   });
 });

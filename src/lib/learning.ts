@@ -26,12 +26,12 @@ export type TaskResult = {
   hints: Record<string, number>; ime: Record<string, number>; mistakes: Record<string, number>;
 };
 
-/** 依最近表現調整：連續 4 次不用提示且首次正確率 ≥90% 才升級；連續 2 次需要按鍵提示就降一級。農場等級不影響。 */
+/** 依最近表現調整：連續 3 首不用提示且首次正確率 ≥90% 才升級；連續 2 次需要按鍵提示就降一級。農場等級不影響。 */
 export function adapt(l0: Learner, r: TaskResult): Learner {
   const l = { ...l0 };
   if (r.maxHint === 0 && r.firstTry / r.positions >= 0.9) {
     l.clean++; l.struggle = 0;
-    if (l.clean >= 4 && l.level < 3) { l.level = (l.level + 1) as Learner["level"]; l.clean = 0; }
+    if (l.clean >= 3 && l.level < 3) { l.level = (l.level + 1) as Learner["level"]; l.clean = 0; }
   } else if (r.maxHint >= 2) {
     l.struggle++; l.clean = 0;
     if (l.struggle >= 2 && l.level > 1) { l.level = (l.level - 1) as Learner["level"]; l.struggle = 0; }
@@ -42,17 +42,14 @@ export function adapt(l0: Learner, r: TaskResult): Learner {
   return l;
 }
 
-/** 每種農場工作要打幾句：播種固定一句；其他工作依學生程度 1～2 句。 */
-export const linesFor = (kind: string, l: Learner) => kind === "plant" ? 1 : l.level >= 2 ? 2 : 1;
-
-// ---- 詩歌收藏 ----
-export type Progress = { poemId: string; line: number };
+// ---- 選詩與詩歌收藏 ----
 export type Collection = Record<string, { count: number; first: string; last: string }>;
 
+/** 程度 1：20 字以內（五言絕句、短童詩）；程度 2：28 字以內（七言絕句）；程度 3：全部（含六句長詩）。 */
+const MAX_HANZI = { 1: 20, 2: 28, 3: 99 };
 export function pickPoem(l: Learner, col: Collection, rng = Math.random, avoid?: string): string {
-  const ok = POEMS.filter(p => p.punctStage <= l.punctStage && p.id !== avoid)
-    // 程度 1 先練一句 5～7 字的詩；程度 3 才會出現六句的長詩
-    .filter(p => l.level >= 3 || p.lines.length <= 4);
+  const fits = (max: number) => POEMS.filter(p => p.punctStage <= l.punctStage && p.hanzi <= max && p.id !== avoid);
+  const ok = fits(MAX_HANZI[l.level]).length ? fits(MAX_HANZI[l.level]) : fits(99);
   const fresh = ok.filter(p => !col[p.id]);
   const pool = fresh.length ? fresh : ok;
   const least = Math.min(...pool.map(p => col[p.id]?.count ?? 0));
@@ -60,18 +57,10 @@ export function pickPoem(l: Learner, col: Collection, rng = Math.random, avoid?:
   return best[Math.floor(rng() * best.length)].id;
 }
 
-export function takeLines(p: Progress, n: number): Line[] {
-  return POEM[p.poemId].lines.slice(p.line, p.line + n);
-}
-
-/** 完成幾句後前進；整首完成就收藏並換下一首。 */
-export function advance(p: Progress, n: number, col: Collection, l: Learner, today: string, rng = Math.random) {
-  const poem = POEM[p.poemId];
-  const line = p.line + n;
-  if (line < poem.lines.length) return { progress: { ...p, line }, collection: col, finished: null as Poem | null };
-  const prev = col[poem.id];
-  const collection = { ...col, [poem.id]: { count: (prev?.count ?? 0) + 1, first: prev?.first ?? today, last: today } };
-  return { progress: { poemId: pickPoem(l, collection, rng, poem.id), line: 0 }, collection, finished: poem };
+/** 打完整首詩：收進圖鑑（再打一次會累加次數）。 */
+export function collect(col: Collection, id: string, today: string): Collection {
+  const prev = col[id];
+  return { ...col, [id]: { count: (prev?.count ?? 0) + 1, first: prev?.first ?? today, last: today } };
 }
 
 // ---- 學習紀錄 ----
